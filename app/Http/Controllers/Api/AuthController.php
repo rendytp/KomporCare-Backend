@@ -9,7 +9,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -169,8 +171,52 @@ class AuthController extends Controller
                 'created_at' => now(),
             ]);
 
-            // TODO: kirim $code lewat WhatsApp gateway (Fonnte/Twilio/dll) atau email (Mail::to()).
-            // Untuk pengembangan, kode hanya dicatat di log Laravel.
+            $text = "Kode pemulihan kata sandi KomporCare Anda: {$code}\n"
+                  . "Berlaku " . self::RESET_MINUTES . " menit. Jangan bagikan kode ini kepada siapa pun.";
+
+            $viaPhone = !str_contains($identifier, '@');
+            $sent = false;
+
+            $fonnteToken = trim((string) config('services.fonnte.token'));
+            if ($viaPhone && ($fonnteToken === '' || $fonnteToken === 'token_dari_fonnte')) {
+                Log::warning('[KomporCare] WhatsApp dilewati: FONNTE_TOKEN kosong atau masih contoh. Kode dikirim lewat email.');
+                $fonnteToken = '';
+            }
+
+            if ($viaPhone && $fonnteToken !== '') {
+                // Nomor telepon -> WhatsApp (Fonnte)
+                try {
+                    $res = Http::withHeaders(['Authorization' => $fonnteToken])
+                        ->timeout(10)
+                        ->asForm()
+                        ->post('https://api.fonnte.com/send', [
+                            'target'      => $user->phone,
+                            'message'     => $text,
+                            'countryCode' => '62',
+                        ]);
+                    // Fonnte membalas HTTP 200 dengan {"status": false, "reason": "..."} saat gagal.
+                    $sent = $res->successful() && $res->json('status') === true;
+                    if ($sent) {
+                        Log::info("[KomporCare] Kode reset dikirim via WhatsApp ke {$user->phone}");
+                    } else {
+                        Log::error('Fonnte menolak pengiriman', ['body' => $res->body()]);
+                    }
+                } catch (\Throwable $e) {
+                    Log::error('Gagal kirim WhatsApp reset', ['error' => $e->getMessage()]);
+                }
+            }
+
+            // Email: dipakai bila memasukkan email, atau sebagai cadangan jika WhatsApp tidak tersedia/gagal.
+            if (!$sent) {
+                try {
+                    Mail::raw($text, function ($m) use ($user) {
+                        $m->to($user->email)->subject('Kode pemulihan kata sandi KomporCare');
+                    });
+                } catch (\Throwable $e) {
+                    Log::error('Gagal kirim email reset', ['error' => $e->getMessage()]);
+                }
+            }
+
             if (config('app.debug')) {
                 Log::info("[KomporCare] Kode reset untuk user {$user->user_id}: {$code}");
             }
@@ -178,7 +224,7 @@ class AuthController extends Controller
 
         // Respons selalu sama agar keberadaan akun tidak bisa ditebak.
         return response()->json([
-            'message' => 'Jika akun terdaftar, instruksi pemulihan telah dikirim ke email atau WhatsApp Anda.',
+            'message' => 'Jika akun terdaftar, kode pemulihan telah dikirim ke WhatsApp atau email Anda.',
         ]);
     }
 
