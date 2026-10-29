@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\MidtransWebhookController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
@@ -23,6 +24,9 @@ Route::prefix('auth')->group(function () {
     });
 });
 
+// Webhook gateway pembayaran (publik; keaslian dicek lewat signature)
+Route::post('payments/midtrans/notification', MidtransWebhookController::class)->middleware('throttle:120,1');
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('services', [ServiceController::class, 'index']);
     Route::get('customer/home', [CustomerController::class, 'home']);
@@ -40,6 +44,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Pembayaran & ulasan
     Route::get('customer/orders/{code}/payment', [PaymentController::class, 'show']);
     Route::post('customer/orders/{code}/pay', [PaymentController::class, 'pay'])->middleware('throttle:10,1');
+    Route::post('customer/orders/{code}/qris', [PaymentController::class, 'qris'])->middleware('throttle:20,1');
+    Route::get('customer/orders/{code}/qris/status', [PaymentController::class, 'qrisStatus'])->middleware('throttle:60,1');
     Route::get('customer/orders/{code}/review', [ReviewController::class, 'show']);
     Route::post('customer/orders/{code}/review', [ReviewController::class, 'store']);
 

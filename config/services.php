@@ -14,6 +14,14 @@ return [
     |
     */
     'fonnte' => ['token' => env('FONNTE_TOKEN')],
+
+    // QRIS lewat Midtrans Core API. Kosongkan MIDTRANS_SERVER_KEY untuk mode DEMO.
+    'midtrans' => [
+        'server_key'     => env('MIDTRANS_SERVER_KEY'),
+        'is_production'  => (bool) env('MIDTRANS_IS_PRODUCTION', false),
+        'acquirer'       => env('MIDTRANS_QRIS_ACQUIRER', 'gopay'),
+        'expiry_minutes' => (int) env('MIDTRANS_QRIS_EXPIRY', 15),
+    ],
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
     ],
