@@ -2,9 +2,12 @@
 
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\ServiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +30,18 @@ Route::middleware('auth:sanctum')->group(function () {
     // Pesanan
     Route::get('customer/orders', [OrderController::class, 'index']);
     Route::get('customer/orders/{code}', [OrderController::class, 'show']);
+
+    // Pemesanan + cari teknisi otomatis + pelacakan
+    Route::post('customer/orders', [BookingController::class, 'store'])->middleware('throttle:20,1');
+    Route::post('customer/orders/{code}/match', [BookingController::class, 'match'])->middleware('throttle:20,1');
+    Route::post('customer/orders/{code}/cancel', [BookingController::class, 'cancel']);
+    Route::get('customer/orders/{code}/tracking', [BookingController::class, 'tracking']);
+
+    // Pembayaran & ulasan
+    Route::get('customer/orders/{code}/payment', [PaymentController::class, 'show']);
+    Route::post('customer/orders/{code}/pay', [PaymentController::class, 'pay'])->middleware('throttle:10,1');
+    Route::get('customer/orders/{code}/review', [ReviewController::class, 'show']);
+    Route::post('customer/orders/{code}/review', [ReviewController::class, 'store']);
 
     // Pesan (chat teknisi & CS)
     Route::get('customer/conversations', [ChatController::class, 'index']);

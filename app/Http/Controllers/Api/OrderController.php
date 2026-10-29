@@ -62,9 +62,11 @@ class OrderController extends Controller
             ->leftJoin('users as tu', 'tu.user_id', '=', 't.user_id')
             ->leftJoin('payments as p', 'p.order_id', '=', 'o.order_id')
             ->leftJoin('payment_methods as pm', 'pm.method_id', '=', 'p.method_id')
+            ->leftJoin('reviews as rv', 'rv.order_id', '=', 'o.order_id')
             ->select([
                 'o.order_id', 'o.order_code', 'o.status', 'o.scheduled_at', 'o.subtotal',
                 'o.transport_fee', 'o.total_price', 'o.completed_at', 'o.cancel_reason',
+                'o.service_finished_at', 'rv.review_id',
                 'a.label as address_label', 'a.full_address', 'a.city',
                 't.technician_id', 'tu.user_id as technician_user_id', 'tu.full_name as technician_name',
                 'p.amount as payment_amount', 'p.status as payment_status',
@@ -121,6 +123,10 @@ class OrderController extends Controller
             'payment_type'     => $o->payment_type,
             'payment_status'   => $o->payment_status,
             'cancel_reason'    => $o->cancel_reason,
+            'service_finished_at' => $o->service_finished_at,
+            'can_pay'          => $o->status === 'in_progress' && $o->service_finished_at !== null
+                && $o->payment_status === 'pending',
+            'can_review'       => $o->status === 'completed' && $o->review_id === null && $o->technician_id !== null,
         ];
     }
 }
