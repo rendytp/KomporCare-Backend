@@ -59,8 +59,17 @@ class TechnicianMatcher
      */
     public function rank(int $serviceId, ?float $lat, ?float $lng, Carbon $when, array $exclude = []): array
     {
+        $rejectionCounts = DB::table('technician_order_rejections')
+            ->select('technician_id')
+            ->selectRaw('COUNT(*) as rejection_count')
+            ->where('penalty_applied', true)
+            ->groupBy('technician_id');
+
         $rows = DB::table('technicians as t')
             ->join('users as u', 'u.user_id', '=', 't.user_id')
+            ->leftJoinSub($rejectionCounts, 'rejections', function ($join) {
+                $join->on('rejections.technician_id', '=', 't.technician_id');
+            })
             ->join('technician_services as ts', function ($j) use ($serviceId) {
                 $j->on('ts.technician_id', '=', 't.technician_id')->where('ts.service_id', '=', $serviceId);
             })
@@ -80,8 +89,13 @@ class TechnicianMatcher
             ->get([
                 't.technician_id', 't.user_id', 'u.full_name', 'u.phone',
                 't.experience_year', 't.rating_avg', 't.total_jobs',
-                't.current_lat', 't.current_lng',
-            ]);
+                't.current_lat', 't.current_lng', 'rejections.rejection_count',
+            ])
+            ->map(function ($row) {
+                $row->rejection_count = (int) ($row->rejection_count ?? 0);
+
+                return $row;
+            });
 
         $out = [];
         foreach ($rows as $r) {
@@ -98,12 +112,13 @@ class TechnicianMatcher
             $ratingScore = ((int) $r->total_jobs) > 0 ? min(5.0, (float) $r->rating_avg) / 5 : 0.7;
             $jobsScore = min((int) $r->total_jobs, 100) / 100;
 
-            $score = 100 * (
+            $baseScore = 100 * (
                 self::W_DISTANCE * $distScore
                 + self::W_EXPERIENCE * $expScore
                 + self::W_RATING * $ratingScore
                 + self::W_JOBS * $jobsScore
             );
+            $score = self::applyRejectionPenalty($baseScore, (int) $r->rejection_count);
 
             $roadKm = $straight === null ? null : self::roadKm($straight);
 
@@ -130,6 +145,14 @@ class TechnicianMatcher
         return $out;
     }
 
+    public static function applyRejectionPenalty(float $score, int $rejectionCount, ?float $penalty = null): float
+    {
+        $penalty ??= (float) config('technician.rejection_penalty', 15);
+        $penalty = max(0, $penalty);
+
+        return round(max(0, $score - max(0, $rejectionCount) * $penalty), 1);
+    }
+
     /**
      * Pilih teknisi terbaik dan tetapkan ke pesanan (status pending -> accepted).
      * Mengembalikan data teknisi terpilih, atau null bila tidak ada kandidat.
@@ -150,8 +173,19 @@ class TechnicianMatcher
 
         $lat = $o->latitude === null ? null : (float) $o->latitude;
         $lng = $o->longitude === null ? null : (float) $o->longitude;
+        $rejectedTechnicians = DB::table('technician_order_rejections')
+            ->where('order_id', $orderId)
+            ->pluck('technician_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
-        $candidates = $this->rank((int) $o->service_id, $lat, $lng, Carbon::parse($o->scheduled_at));
+        $candidates = $this->rank(
+            (int) $o->service_id,
+            $lat,
+            $lng,
+            Carbon::parse($o->scheduled_at),
+            $rejectedTechnicians,
+        );
 
         foreach ($candidates as $best) {
             $assigned = DB::transaction(function () use ($o, $best) {

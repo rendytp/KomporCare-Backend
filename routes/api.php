@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\TechnicianController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -26,6 +27,14 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('services', [ServiceController::class, 'index']);
     Route::get('customer/home', [CustomerController::class, 'home']);
+
+    Route::prefix('technician')->group(function () {
+        Route::get('dashboard', [TechnicianController::class, 'dashboard']);
+        Route::get('orders', [TechnicianController::class, 'orders']);
+        Route::put('availability', [TechnicianController::class, 'availability']);
+        Route::post('orders/{code}/reject', [TechnicianController::class, 'reject']);
+        Route::post('orders/{code}/status', [TechnicianController::class, 'updateStatus']);
+    });
 
     // Pesanan
     Route::get('customer/orders', [OrderController::class, 'index']);
